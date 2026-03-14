@@ -216,6 +216,8 @@ void physics_update(State *state, double dt) {
     }
     float stop_distance = 5.0f;
 
+    static Vector2 old_turn_dir = (Vector2){0.0f,0.0f};
+
     if (p->target_enemy != NULL && p->target_enemy->isAlive) {
 
         p->target_pos = p->target_enemy->pos;
@@ -225,24 +227,30 @@ void physics_update(State *state, double dt) {
         float attack_range = p->attack_range + p->target_enemy->radius;
 
         if (dist_to_enemy <= attack_range) {
-            Vector2 dir_to_enemy = Vector2Normalize(Vector2Subtract(p->target_pos, p->pos));
-
-            p->look_dir = Vector2Lerp(p->look_dir, dir_to_enemy, p->turn_speed * dt);
-            p->look_dir = Vector2Normalize(p->look_dir);
-            
+            old_turn_dir = Vector2Normalize(Vector2Subtract(p->target_pos, p->pos));
             start_attack(p,p->target_enemy);
+            // Skip movement
+            goto A;
         }
     }
-    float vec_dist = Vector2Distance(p->pos, p->target_pos);
+    if(Vector2DistanceSqr(old_turn_dir, p->look_dir) > VEC_EPS) {
+        printf("yo");
+        p->look_dir = Vector2Lerp(p->look_dir, old_turn_dir, p->turn_speed * dt);
+        p->look_dir = Vector2Normalize(p->look_dir);
+    }
+    else {
+        p->look_dir = old_turn_dir;
+    }
+    float vec_dist = Vector2DistanceSqr(p->pos, p->target_pos);
 
-    if (vec_dist > stop_distance) {
+    if (vec_dist > stop_distance * stop_distance) {
+        old_turn_dir = p->look_dir;
         Vector2 dir = Vector2Subtract(p->target_pos, p->pos);
         dir = Vector2Normalize(dir);
 
         p->pos.x += dir.x * p->move_speed * dt;
         p->pos.y += dir.y * p->move_speed * dt;
 
-        // Płynny obrót
         p->look_dir = Vector2Lerp(p->look_dir, dir, p->turn_speed * dt);
         p->look_dir = Vector2Normalize(p->look_dir);
     } else {
@@ -250,6 +258,8 @@ void physics_update(State *state, double dt) {
             stop_player(p);
         }
     }
+A:
+
     alive_enemy_count = 0;
     for(int i = 0; i < active_enemy_count; i++) {
         if(all_enemy[i].isAlive) {

@@ -19,6 +19,8 @@ typedef struct Enemy {
     int gridY;
 
     float move_speed;
+    float health;
+    float max_health;
 } Enemy;
 
 typedef struct Chunk {
@@ -44,10 +46,11 @@ typedef struct Player {
 
     Enemy *target_enemy;
     PlayerState current_state;
-    
+
     double last_aa;
     bool is_aa;
     float attack_speed;
+    float ad;
 } Player;
 
 typedef struct State {
@@ -97,13 +100,14 @@ int main(void)
         0,
         0.0,
         false,
-        10.0f
+        2.2f,
+        20.0f
     };
 
     Camera2D camera = { 0 };
     camera.offset = (Vector2){ S_WIDTH/2.0f, S_HEIGHT/2.0f };
     camera.rotation = 0.0f;
-    camera.zoom = 1.25f;
+    camera.zoom = 1.0f;
 
     State state = {&player, &camera, GetWorldToScreen2D(player.pos, camera)};
 
@@ -156,10 +160,27 @@ int main(void)
                                 DrawRectangleLines(chunk_pos.x + i, chunk_pos.y + j, 32, 32, Fade(GRAY, 0.3f));
                             }
                         }
+                        // Draw Enemy
                         for (int i = 0; i < world_grid[x][y].enemyCount; i++) {
                             Enemy* e = world_grid[x][y].enemies[i];
                             if (e->isAlive) {
-                            DrawCircleV(e->pos, e->radius, RED);
+                                DrawCircleV(e->pos, e->radius, RED);
+                                if(e->health < 100.0f && e->health > EPSILON) {
+                                    float start_pos = e->pos.x - 16.0f;
+                                    float end_pos = e->pos.x + 16.0f;
+                                    DrawLineEx(
+                                            (Vector2) {start_pos, e->pos.y - 20.0f},
+                                            (Vector2) {end_pos, e->pos.y - 20.0f},
+                                            3.0f,
+                                            GREEN);
+                                    // Missing health (overlay the green one) 32 because of padding (16+16)
+                                    DrawLineEx(
+                                            (Vector2) {end_pos, e->pos.y - 20.0f},
+                                            (Vector2) {end_pos - ((32 * (e->max_health - e->health)) / e->max_health), e->pos.y - 20.0f},
+
+                                            3.0f,
+                                            RED);
+                                }
                             }
                         }
                     }
@@ -233,14 +254,6 @@ void physics_update(State *state, double dt) {
             goto A;
         }
     }
-    if(Vector2DistanceSqr(old_turn_dir, p->look_dir) > VEC_EPS) {
-        printf("yo");
-        p->look_dir = Vector2Lerp(p->look_dir, old_turn_dir, p->turn_speed * dt);
-        p->look_dir = Vector2Normalize(p->look_dir);
-    }
-    else {
-        p->look_dir = old_turn_dir;
-    }
     float vec_dist = Vector2DistanceSqr(p->pos, p->target_pos);
 
     if (vec_dist > stop_distance * stop_distance) {
@@ -259,7 +272,14 @@ void physics_update(State *state, double dt) {
         }
     }
 A:
-
+    if(Vector2DistanceSqr(old_turn_dir, p->look_dir) > VEC_EPS) {
+        printf("yo");
+        p->look_dir = Vector2Lerp(p->look_dir, old_turn_dir, p->turn_speed * dt);
+        p->look_dir = Vector2Normalize(p->look_dir);
+    }
+    else {
+        p->look_dir = old_turn_dir;
+    }
     alive_enemy_count = 0;
     for(int i = 0; i < active_enemy_count; i++) {
         if(all_enemy[i].isAlive) {
@@ -352,6 +372,8 @@ void summon_enemies(int count) {
         all_enemy[active_enemy_count].radius = 10.0f;
         all_enemy[active_enemy_count].move_speed = 120.0f;
         all_enemy[active_enemy_count].target_pos = all_enemy[active_enemy_count].pos;
+        all_enemy[active_enemy_count].max_health = 100.0f;
+        all_enemy[active_enemy_count].health = all_enemy[active_enemy_count].max_health;
         int chX = (int)(rx/CHUNK_SIZE);
         int chY = (int)(ry/CHUNK_SIZE);
 
@@ -374,9 +396,13 @@ void start_attack(Player *p, Enemy *e) {
         stop_player(p);
         if(p->last_aa < GetTime() - 1/p->attack_speed) {
             printf("time delta: %.3f\n",p->last_aa + (1/p->attack_speed) - GetTime());
-            if(p->is_aa)
-                e->isAlive = false;
-
+            if(p->is_aa) {
+                p->is_aa = false;
+                e->health -= p->ad;
+                if(e->health <= EPSILON) {
+                    e->isAlive = false;
+                }
+            }
             p->last_aa = GetTime();
         }
 
